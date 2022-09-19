@@ -42,35 +42,11 @@ func onPropertiesChanged(signal *dbus.Signal) {
     if n == nil {
         return
     }
-    interfaceName := signal.Body[0]
-
-    /* changed_properties */
-    for k, v := range signal.Body[1].(map[string]dbus.Variant) {
-        n.SetProperty(k, v)
-    }
-
-    /* invalidated_properties */
-    props := signal.Body[2].([]string)
-    remaining := len(props)
-    if remaining > 0 {
-        ch := make(chan *dbus.Call, remaining)
-        for k := range props {
-            n.GetMPRISObject().Go("org.freedesktop.DBus.Properties.Get", 0, ch,
-                interfaceName, /* interface_name */
-                k, /* property_name */
-            )
-        }
-        for call := range ch {
-            k := call.Args[1].(string) /* property_name */
-            v := dbus.MakeVariant(call.Body[0]) /* value */
-            n.SetProperty(k, v)
-            remaining--
-            if remaining <= 0 {
-                break
-            }
-        }
-    }
-    n.Update()
+    n.HandlePropertiesChanged(
+        signal.Body[0].(string), /* interface_name */
+        signal.Body[1].(map[string]dbus.Variant), /* changed_properties */
+        signal.Body[2].([]string), /* invalidated_properties */
+    )
 }
 
 func onNotificationClosed(signal *dbus.Signal) {

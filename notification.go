@@ -11,8 +11,13 @@ type Notification interface {
     Close()
     Update()
     SetProperty(key string, value dbus.Variant) error
+    HandlePropertiesChanged(
+        interfaceName string,
+        changedProps map[string]dbus.Variant,
+        invalidatedProps []string,
+    )
     HandleNotificationClosed(reason uint32)
-    HandleActionInvoked(action_key string)
+    HandleActionInvoked(actionKey string)
 }
 
 type notification struct {
@@ -186,6 +191,37 @@ func (self *notification) SetProperty(key string, value dbus.Variant) error {
         storeMeta("xesam:title", &self.title)
     }
     return err
+}
+
+func (self *notification) HandlePropertiesChanged(
+    interfaceName string,
+    changedProps map[string]dbus.Variant,
+    invalidatedProps []string,
+) {
+    for k, v := range changedProps {
+        self.SetProperty(k, v)
+    }
+
+    remaining := len(invalidatedProps)
+    if remaining > 0 {
+        ch := make(chan *dbus.Call, remaining)
+        for k := range invalidatedProps {
+            self.mprisObject.Go("org.freedesktop.DBus.Properties.Get", 0, ch,
+                interfaceName, /* interface_name */
+                k, /* property_name */
+            )
+        }
+        for call := range ch {
+            k := call.Args[1].(string) /* property_name */
+            v := dbus.MakeVariant(call.Body[0]) /* value */
+            self.SetProperty(k, v)
+            remaining--
+            if remaining <= 0 {
+                break
+            }
+        }
+    }
+    self.Update()
 }
 
 func (self *notification) HandleNotificationClosed(reason uint32) {
